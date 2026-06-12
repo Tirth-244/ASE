@@ -1,0 +1,264 @@
+// =============================================================================
+// Prisma Schema - AI Sports Editor Database
+// =============================================================================
+// This schema defines the complete data model for the application.
+// Run `npx prisma migrate dev` to create/update the database.
+// =============================================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// =============================================================================
+// User & Authentication
+// =============================================================================
+
+/// User account for authentication and project ownership
+model User {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  name         String
+  passwordHash String   @map("password_hash")
+  avatar       String?
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  projects Project[]
+
+  @@map("users")
+}
+
+// =============================================================================
+// Project & Video
+// =============================================================================
+
+/// A project represents a single YouTube video being processed
+model Project {
+  id          String        @id @default(uuid())
+  userId      String        @map("user_id")
+  youtubeUrl  String        @map("youtube_url")
+  youtubeId   String?       @map("youtube_id")
+  title       String?
+  description String?
+  thumbnail   String?
+  duration    Int?          // Duration in seconds
+  status      ProjectStatus @default(PENDING)
+  metadata    Json?         // Raw YouTube metadata
+  createdAt   DateTime      @default(now()) @map("created_at")
+  updatedAt   DateTime      @updatedAt @map("updated_at")
+
+  // Local file paths
+  videoPath   String?       @map("video_path")
+  audioPath   String?       @map("audio_path")
+
+  // Relations
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  analysis Analysis?
+  clips    Clip[]
+  exports  Export[]
+
+  @@index([userId])
+  @@index([status])
+  @@map("projects")
+}
+
+/// Project processing status
+enum ProjectStatus {
+  PENDING
+  DOWNLOADING
+  DOWNLOADED
+  ANALYZING
+  ANALYZED
+  GENERATING_CLIPS
+  CLIPS_READY
+  EXPORTING
+  COMPLETED
+  FAILED
+}
+
+// =============================================================================
+// AI Analysis
+// =============================================================================
+
+/// Analysis results for a project's video
+model Analysis {
+  id         String         @id @default(uuid())
+  projectId  String         @unique @map("project_id")
+  status     AnalysisStatus @default(PENDING)
+  progress   Int            @default(0) // 0–100
+  transcript Json?          // Full transcript with timestamps
+  scenes     Json?          // Scene boundaries from PySceneDetect
+  audioData  Json?          @map("audio_data") // Beat detection, energy levels
+  error      String?
+  startedAt  DateTime?      @map("started_at")
+  completedAt DateTime?     @map("completed_at")
+  createdAt  DateTime       @default(now()) @map("created_at")
+  updatedAt  DateTime       @updatedAt @map("updated_at")
+
+  // Relations
+  project Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  moments Moment[]
+
+  @@map("analyses")
+}
+
+/// Analysis processing status
+enum AnalysisStatus {
+  PENDING
+  EXTRACTING_FRAMES
+  DETECTING_SCENES
+  TRANSCRIBING
+  DETECTING_ACTIONS
+  SCORING_MOMENTS
+  COMPLETED
+  FAILED
+}
+
+/// A detected exciting moment within the video
+model Moment {
+  id            String     @id @default(uuid())
+  analysisId    String     @map("analysis_id")
+  type          MomentType
+  startTime     Float      @map("start_time")  // Seconds
+  endTime       Float      @map("end_time")    // Seconds
+  score         Float      // 0.0–1.0 excitement score
+  confidence    Float      @default(0.0)       // Detection confidence
+  description   String?
+  thumbnailPath String?    @map("thumbnail_path")
+  metadata      Json?      // Extra data (player names, action details)
+  createdAt     DateTime   @default(now()) @map("created_at")
+
+  // Relations
+  analysis Analysis @relation(fields: [analysisId], references: [id], onDelete: Cascade)
+
+  @@index([analysisId])
+  @@index([type])
+  @@index([score(sort: Desc)])
+  @@map("moments")
+}
+
+/// Types of exciting moments that can be detected
+enum MomentType {
+  GOAL
+  SKILL
+  CELEBRATION
+  CROWD_REACTION
+  FUNNY_MOMENT
+  LAST_MINUTE_ACTION
+  SAVE
+  FOUL
+  PENALTY
+  FREE_KICK
+  HIGHLIGHT
+  OTHER
+}
+
+// =============================================================================
+// Clips & Effects
+// =============================================================================
+
+/// A generated clip from the source video
+model Clip {
+  id          String     @id @default(uuid())
+  projectId   String     @map("project_id")
+  presetType  ClipPreset @map("preset_type")
+  title       String?
+  startTime   Float      @map("start_time")
+  endTime     Float      @map("end_time")
+  duration    Float      // Calculated duration in seconds
+  status      ClipStatus @default(PENDING)
+  filePath    String?    @map("file_path")
+  effects     Json?      // Applied effects configuration
+  captions    Json?      // Generated captions with timings
+  hashtags    String[]   // AI-generated hashtags
+  aiTitle     String?    @map("ai_title")
+  aiDescription String? @map("ai_description")
+  order       Int        @default(0) // For timeline ordering
+  createdAt   DateTime   @default(now()) @map("created_at")
+  updatedAt   DateTime   @updatedAt @map("updated_at")
+
+  // Relations
+  project Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  exports Export[]
+
+  // AI Generation details
+  template    String?    // E.g., 'TikTok Viral', 'Phonk Edit'
+  isFallback  Boolean    @default(false) @map("is_fallback")
+
+  @@index([projectId])
+  @@map("clips")
+}
+
+/// Clip duration presets
+enum ClipPreset {
+  SHORT_15    // 15-second YouTube Short
+  SHORT_30    // 30-second YouTube Short
+  HIGHLIGHT_60 // 60-second highlight reel
+  CUSTOM      // Custom duration
+}
+
+/// Clip processing status
+enum ClipStatus {
+  PENDING
+  PROCESSING
+  READY
+  FAILED
+}
+
+// =============================================================================
+// Exports
+// =============================================================================
+
+/// An export job for a finalized clip
+model Export {
+  id         String       @id @default(uuid())
+  projectId  String       @map("project_id")
+  clipId     String       @map("clip_id")
+  format     ExportFormat @default(MP4)
+  resolution String       @default("1080x1920") // Width x Height
+  quality    String       @default("high")
+  status     ExportStatus @default(PENDING)
+  progress   Int          @default(0) // 0–100
+  fps        Int          @default(30)
+  aspectRatio String      @default("9:16") @map("aspect_ratio")
+  localPath  String?      @map("local_path")
+  filePath   String?      @map("file_path")
+  fileSize   BigInt?      @map("file_size") // Bytes
+  error      String?
+  startedAt  DateTime?    @map("started_at")
+  completedAt DateTime?   @map("completed_at")
+  createdAt  DateTime     @default(now()) @map("created_at")
+  updatedAt  DateTime     @updatedAt @map("updated_at")
+
+  // Relations
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  clip    Clip    @relation(fields: [clipId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+  @@index([clipId])
+  @@index([status])
+  @@map("exports")
+}
+
+/// Export video format
+enum ExportFormat {
+  MP4
+  WEBM
+  MOV
+}
+
+/// Export processing status
+enum ExportStatus {
+  PENDING
+  RENDERING
+  ENCODING
+  UPLOADING
+  COMPLETED
+  FAILED
+}

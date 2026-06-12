@@ -1,0 +1,73 @@
+# =============================================================================
+# AI Sports Editor - Development Docker Compose Override
+# =============================================================================
+# Usage:
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up
+# =============================================================================
+
+services:
+  # Disable nginx in development (use Next.js dev server directly)
+  nginx:
+    profiles:
+      - production
+
+  # Frontend with hot-reload
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      target: dev
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=development
+      - NEXT_PUBLIC_API_URL=http://localhost:4000/api
+      - NEXTAUTH_URL=http://localhost:3000
+    volumes:
+      - ./frontend/src:/app/src
+      - ./frontend/public:/app/public
+    command: npm run dev
+
+  # Backend with hot-reload via tsx
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      target: dev
+    ports:
+      - "4000:4000"
+    environment:
+      - NODE_ENV=development
+      - LOG_LEVEL=debug
+      - CORS_ORIGINS=http://localhost:3000
+    volumes:
+      - ./backend/src:/app/src
+      - ./backend/prisma:/app/prisma
+    command: npx tsx watch src/index.ts
+
+  # AI Service with hot-reload via uvicorn
+  ai-service:
+    build:
+      context: ./ai-service
+      dockerfile: Dockerfile
+      target: dev
+    ports:
+      - "8000:8000"
+    environment:
+      - LOG_LEVEL=debug
+    volumes:
+      - ./ai-service/app:/app/app
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    deploy:
+      resources:
+        limits:
+          memory: 6G
+
+  # Expose DB and Redis ports for local tools
+  postgres:
+    ports:
+      - "5432:5432"
+
+  redis:
+    ports:
+      - "6379:6379"

@@ -1,0 +1,64 @@
+# Dependencies
+node_modules/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.venv/
+venv/
+env/
+
+# Environment
+.env
+.env.local
+.env.*.local
+*.pem
+
+# Build output
+.next/
+dist/
+build/
+out/
+
+# IDE / Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+.gemini/
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Storage & Databases
+storage/
+postgres-data/
+redis-data/
+temp/
+*.tmp
+*.temp
+
+# AI Models
+ai-service/models/*.pt
+ai-service/models/*.bin
+ai-service/models/*.onnx
+ai-service/models/*.safetensors
+ai-service/models/*.ckpt
+
+# Test coverage & Tool caches
+coverage/
+.nyc_output/
+htmlcov/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Prisma
+backend/prisma/migrations/**/migration_lock.toml
